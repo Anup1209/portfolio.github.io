@@ -1,0 +1,4209 @@
+#include <queue>
+#include <fstream>
+#include <vector>
+#include <iomanip>
+#include <string>
+#include <iostream>
+#include <map>
+#include <sstream>
+#include <ctime>
+
+// Patient structure with more attributes
+struct Patient
+{
+    std::string name;
+
+    // Higher values indicate higher criticality
+    int priority;
+    std::string condition;
+
+    // "General", "Semi-Private", or "Private"
+    std::string roomType;
+    int age;
+    std::string gender;
+
+    // Brief history of medical condition
+    std::string medicalHistory;
+
+    // New attribute for doctor specialization
+    std::string doctorSpecialization;
+
+    bool operator<(const Patient& p) const
+
+    {
+
+// Higher priority patients go first
+        return priority < p.priority;
+
+    }
+};
+
+void logOperation(const std::string& message)
+{
+
+    std::ofstream logFile("operations.log", std::ios::app);
+    if (!logFile)
+
+    {
+        std::cerr << "Error: Unable to open log file.\n";
+        return;
+    }
+
+    std::time_t now = std::time(nullptr);
+    logFile << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S") << " - " << message << "\n";
+    logFile.close();
+
+}
+
+void saveRooms(const std::string& fileName, const std::map<std::string, std::queue<int>>& rooms);
+
+void saveWaitingList(const std::string& fileName, const std::queue<Patient>& waitingList);
+
+struct Doctor
+
+ {
+    std::string name;
+    std::string specialization;
+    int workload;
+
+// Number of patients currently assigned
+    Doctor(const std::string& n, const std::string& spec) : name(n), specialization(spec), workload(0) {}
+
+    // Method to save doctor information to a file
+
+    void saveToFile(std::ofstream& outFile) const
+    {
+
+    outFile << name << "," << specialization << "," << workload << "\n";
+}
+
+    // Static method to load doctor information from a line
+    static Doctor loadFromFile(const std::string& line)
+
+     {
+
+    std::istringstream ss(line);
+    std::string name, specialization;
+    int workload;
+
+    std::getline(ss, name, ',');
+    std::getline(ss, specialization, ',');
+    ss >> workload;
+
+    return Doctor(name, specialization);
+}
+
+};
+
+// List of doctors
+std::vector<Doctor> doctors;
+
+// Map specialization to available doctors
+
+std::map<std::string, std::queue<Doctor*>> availableDoctors;
+void loadDoctorsFromFile(const std::string& fileName)
+{
+    std::ifstream doctorFile(fileName);
+    if (!doctorFile)
+    {
+        std::cerr << "Error: Unable to open doctor file.\n";
+        return;
+    }
+
+    std::string line;
+    while (std::getline(doctorFile, line))
+    {
+        Doctor doctor = Doctor::loadFromFile(line);
+        doctors.push_back(doctor);
+        availableDoctors[doctor.specialization].push(&doctors.back());
+    }
+    doctorFile.close();
+}
+
+void saveDoctorsToFile(const std::string& fileName)
+{
+    std::ofstream doctorFile(fileName);
+    if (!doctorFile)
+    {
+        std::cerr << "Error: Unable to open doctor file for updating.\n";
+        return;
+    }
+
+    for (const auto& doctor : doctors)
+    {
+        doctor.saveToFile(doctorFile);
+    }
+    doctorFile.close();
+}
+
+void registerDoctor()
+{
+    std::string name, specialization;
+    std::cout << "\n--- Register New Doctor ---\n";
+    std::cout << "Enter doctor's name: ";
+    std::cin.ignore();
+    std::getline(std::cin, name);
+    std::cout << "Enter specialization: ";
+    std::getline(std::cin, specialization);
+
+    Doctor newDoctor(name, specialization);
+    doctors.push_back(newDoctor);
+    // Add to the queue of available doctors
+    availableDoctors[specialization].push(&doctors.back());
+
+    // Save to file
+    std::ofstream doctorFile("doctors.txt", std::ios::app);
+    if (doctorFile)
+
+        {
+
+        newDoctor.saveToFile(doctorFile);
+        doctorFile.close();
+        std::cout << "Doctor registered successfully.\n";
+
+    } else
+    {
+        std::cerr << "Error: Unable to open doctor file for saving.\n";
+    }
+}
+
+void viewDoctorDetails(const Doctor& doctor)
+{
+
+    std::cout << "Doctor Name: " << doctor.name << "\n"
+              << "Specialization: " << doctor.specialization << "\n"
+              << "Workload: " << doctor.workload << "\n";
+
+}
+
+
+void updateDoctorWorkload(const std::string& doctorName, int change)
+{
+    for (auto& doctor : doctors)
+    {
+        if (doctor.name == doctorName)
+        {
+            doctor.workload += change;
+            break;
+        }
+    }
+}
+
+void assignDoctorToPatient(Patient& patient)
+{
+    if (availableDoctors.find(patient.doctorSpecialization) != availableDoctors.end() && !availableDoctors[patient.doctorSpecialization].empty())
+    {
+        Doctor* assignedDoctor = availableDoctors[patient.doctorSpecialization].front();
+        availableDoctors[patient.doctorSpecialization].pop();
+        assignedDoctor->workload++;
+// Increment the workload of the assigned doctor
+
+        std::cout << "Assigned Doctor: " << assignedDoctor->name << " to Patient: " << patient.name << "\n";
+    }
+    else
+    {
+        std::cout << "No available doctors for the specialization: " << patient.doctorSpecialization << "\n";
+    }
+}
+
+
+void loadDoctors()
+ {
+    std::ifstream doctorFile("doctors.txt");
+    if (!doctorFile)
+        {
+
+        std::cerr << "Error: Unable to open doctor file.\n";
+        return;
+    }
+
+    std::string line;
+    while (std::getline(doctorFile, line))
+        {
+        Doctor doctor = Doctor::loadFromFile(line);
+        doctors.push_back(doctor);
+        availableDoctors[doctor.specialization].push(&doctors.back());
+        // Add to the queue of available doctors
+    }
+
+    doctorFile.close();
+}
+
+
+void updatePatientFile(const std::priority_queue<Patient>& patientQueue)
+{
+    std::ofstream patientFile("patients.txt");
+    if (!patientFile)
+    {
+        std::cerr << "Error: Unable to open patient file for updating.\n";
+        return;
+    }
+
+    std::priority_queue<Patient> tempQueue = patientQueue;
+    while (!tempQueue.empty())
+
+    {
+        Patient p = tempQueue.top();
+        tempQueue.pop();
+        patientFile << p.name << " " << p.condition << " " << p.priority << " "
+                    << p.roomType << " " << p.age << " " << p.gender << " "
+                    << p.medicalHistory << " " << p.doctorSpecialization << "\n"; // Include specialization
+    }
+
+    patientFile.close();
+}
+
+// Removed duplicate function definition
+
+// Removed duplicate function definition
+
+void saveDoctors()
+ {
+    std::ofstream doctorFile("doctors.txt");
+    if (!doctorFile)
+        {
+
+        std::cerr << "Error: Unable to open doctor file for updating.\n";
+        return;
+    }
+
+    for (const auto& doctor : doctors)
+        {
+        doctor.saveToFile(doctorFile);
+    }
+    doctorFile.close();
+}
+
+
+void viewDoctors()
+{
+    std::cout << "\n--- Registered Doctors ---\n";
+    std::cout << std::setw(20) << "Doctor Name" << std::setw(20) << "Specialization" << std::setw(10) << "Workload\n";
+    for (const auto& doctor : doctors)
+        {
+        std::cout << std::setw(20) << doctor.name << std::setw(20) << doctor.specialization << std::setw(10) << doctor.workload << "\n";
+    }
+}
+
+
+struct RoomCost
+
+{
+    double generalCost;
+    double semiPrivateCost;
+    double privateCost;
+
+};
+
+
+struct Treatment
+
+{
+    std::string name;
+    double cost;
+
+};
+
+
+struct Billing
+{
+    std::string patientName;
+    double roomCost;
+    double serviceCost;
+    double totalAmount;
+
+    void calculateTotal()
+
+    {
+        totalAmount = roomCost + serviceCost;
+    }
+
+    void saveToFile(const std::string& fileName) const
+    {
+        std::ofstream outFile(fileName, std::ios::app);
+        if (!outFile)
+        {
+            std::cerr << "Error: Unable to open billing file for saving.\n";
+            return;
+        }
+
+        outFile << patientName << "," << roomCost << "," << serviceCost << "," << totalAmount << "\n";
+        outFile.close();
+    }
+
+    void displayBill() const
+     {
+
+        std::cout << "\n--- Bill for " << patientName << " ---\n";
+        std::cout << "Room Cost: $" << std::fixed << std::setprecision(2) << roomCost << "\n";
+        std::cout << "Service Cost: $" << std::fixed << std::setprecision(2) << serviceCost << "\n";
+        std::cout << "Total Amount: $" << std::fixed << std::setprecision(2) << totalAmount << "\n";
+    }
+};
+
+// Example costs for rooms
+std::map<std::string, double> roomCosts = { {"General", 1000.0}, {"Semi-Private", 2000.0}, {"Private", 3000.0} };
+
+ // Map to store treatments and their costs
+
+std::map<std::string, Treatment> treatments;
+void loadTreatmentsFromFile(const std::string& fileName)
+{
+    std::ifstream treatmentFile(fileName);
+    if (!treatmentFile)
+    {
+        std::cerr << "Error: Unable to open treatment file.\n";
+        return;
+    }
+
+    std::string name;
+    double cost;
+    while (treatmentFile >> name >> cost)
+    {
+        treatments[name] = Treatment{name, cost};
+    }
+    treatmentFile.close();
+}
+
+
+void saveTreatmentsToFile(const std::string& fileName)
+{
+    std::ofstream treatmentFile(fileName);
+    if (!treatmentFile)
+    {
+        std::cerr << "Error: Unable to open treatment file for saving.\n";
+        return;
+    }
+
+    for (const auto& treatment : treatments)
+    {
+        treatmentFile << treatment.first << " " << treatment.second.cost << "\n";
+    }
+    treatmentFile.close();
+}
+
+
+void viewRegisteredTreatments()
+{
+    std::cout << "\n--- Registered Treatments ---\n";
+    std::cout << std::setw(20) << "Treatment Name" << std::setw(10) << "Cost\n";
+    for (const auto& treatment : treatments)
+    {
+        std::cout << std::setw(20) << treatment.first << std::setw(10) << treatment.second.cost << "\n";
+    }
+}
+
+
+void registerTreatment()
+
+{
+    std::string treatmentName;
+    double treatmentCost;
+
+    std::cout << "\n--- Register New Treatment ---\n";
+    std::cout << "Enter treatment name: ";
+
+    // to clear out any leftover newline characters
+    std::cin.ignore();
+    std::getline(std::cin, treatmentName);
+
+    std::cout << "Enter treatment cost: $";
+    std::cin >> treatmentCost;
+
+    // Add to the map of treatments
+    treatments[treatmentName] = Treatment{treatmentName, treatmentCost};
+
+    std::cout << "Treatment registered successfully.\n";
+}
+
+
+void viewPatientDetails(const Patient& patient)
+{
+    std::cout << "Patient Name: " << patient.name << "\n"
+              << "Condition: " << patient.condition << "\n"
+              << "Priority: " << patient.priority << "\n"
+              << "Room Type: " << patient.roomType << "\n"
+              << "Age: " << patient.age << "\n"
+              << "Gender: " << patient.gender << "\n"
+              << "Medical History: " << patient.medicalHistory << "\n"
+              << "Doctor Specialization: " << patient.doctorSpecialization << "\n";
+}
+
+// Removed duplicate function definition
+
+
+
+
+void generateBill(const Patient& patient)
+{
+    Billing bill;
+    bill.patientName = patient.name;
+
+
+    // Get room cost based on the room type
+    bill.roomCost = roomCosts[patient.roomType];
+
+
+    // Get the cost of additional treatments
+    double serviceCost = 0;
+    std::string serviceName;
+    char addMore;
+
+    std::cout << "\n--- Add Treatments/Services to Bill ---\n";
+
+    do
+    {
+        std::cout << "Enter treatment/service name (or 'none' to finish): ";
+
+         // Clear newline character from previous input
+        std::cin.ignore();
+        std::getline(std::cin, serviceName);
+
+        if (serviceName != "none" && treatments.find(serviceName) != treatments.end())
+        {
+            serviceCost += treatments[serviceName].cost;
+        }
+
+        std::cout << "Do you want to add another treatment/service? (y/n): ";
+        std::cin >> addMore;
+
+    }
+
+    while (addMore == 'y' || addMore == 'Y');
+
+    // Set service cost and calculate total
+    bill.serviceCost = serviceCost;
+    bill.calculateTotal();
+
+    // Display the bill
+    bill.displayBill();
+}
+
+
+struct Visitor
+{
+    std::string visitorName;
+    std::string contactNumber;
+    std::string patientName;
+
+    // Function to save visitor details to file
+    void saveToFile(const std::string& fileName) const
+    {
+        std::ofstream outFile(fileName, std::ios::app);
+        if (!outFile)
+        {
+            std::cerr << "Error: Unable to open visitor file for saving.\n";
+            return;
+        }
+
+        outFile << visitorName << "," << contactNumber << "," << patientName << "\n";
+        outFile.close();
+    }
+
+    // Static function to load visitor details from a line
+    static Visitor loadFromFile(const std::string& line)
+    {
+        std::istringstream ss(line);
+        std::string visitorName, contactNumber, patientName;
+
+        std::getline(ss, visitorName, ',');
+        std::getline(ss, contactNumber, ',');
+        std::getline(ss, patientName, ',');
+
+        return Visitor{visitorName, contactNumber, patientName};
+    }
+
+    // Function to display visitor details
+    void display() const
+     {
+        std::cout << "Visitor Name: " << visitorName << "\n"
+                  << "Contact Number: " << contactNumber << "\n"
+                  << "Visiting Patient: " << patientName << "\n";
+    }
+};
+
+
+void loadVisitorsFromFile(const std::string& fileName, std::vector<Visitor>& visitors)
+{
+    std::ifstream visitorFile(fileName);
+    if (!visitorFile)
+    {
+        std::cerr << "Error: Unable to open visitor file.\n";
+        return;
+    }
+
+    std::string line;
+    while (std::getline(visitorFile, line))
+    {
+
+        visitors.push_back(Visitor::loadFromFile(line));
+    }
+    visitorFile.close();
+}
+
+
+void saveVisitorsToFile(const std::string& fileName, const std::vector<Visitor>& visitors)
+{
+    std::ofstream visitorFile(fileName);
+    if (!visitorFile)
+    {
+        std::cerr << "Error: Unable to open visitor file for saving.\n";
+        return;
+    }
+
+    for (const auto& visitor : visitors)
+    {
+        visitor.saveToFile(fileName);
+    }
+    visitorFile.close();
+}
+
+
+void viewVisitorDetails(const Visitor& visitor)
+{
+
+    visitor.display();
+}
+
+
+void searchVisitorByPatientName(const std::vector<Visitor>& visitors)
+{
+    std::string patientName;
+    std::cout << "Enter patient name to search for visitors: ";
+    std::cin.ignore();
+    std::getline(std::cin, patientName);
+
+    bool found = false;
+    for (const auto& visitor : visitors)
+    {
+        if (visitor.patientName == patientName)
+        {
+            viewVisitorDetails(visitor);
+            found = true;
+        }
+    }
+
+    if (!found)
+    {
+        std::cout << "No visitors found for patient " << patientName << ".\n";
+    }
+}
+
+
+void registerVisitor()
+ {
+    Visitor visitor;
+
+    std::cout << "\n--- Register New Visitor ---\n";
+    std::cout << "Enter visitor name: ";
+    std::cin.ignore(); // to clear out any leftover newline characters
+    std::getline(std::cin, visitor.visitorName);
+
+    std::cout << "Enter contact number: ";
+    std::getline(std::cin, visitor.contactNumber);
+
+    std::cout << "Enter patient name they are visiting: ";
+    std::getline(std::cin, visitor.patientName);
+
+    // Save the visitor to a file
+    std::ofstream visitorFile("visitors.txt", std::ios::app);
+    if (!visitorFile)
+        {
+
+        std::cerr << "Error: Unable to open visitor file for saving.\n";
+        return;
+
+    }
+    visitorFile << visitor.visitorName << " " << visitor.contactNumber << " " << visitor.patientName << "\n";
+    visitorFile.close();
+
+    std::cout << "Visitor registered successfully.\n";
+
+    // Log the visitor registration
+    logOperation("Visitor " + visitor.visitorName + " registered to visit patient " + visitor.patientName);
+}
+
+
+void viewRegisteredVisitors()
+{
+    std::ifstream visitorFile("visitors.txt");
+    if (!visitorFile)
+    {
+        std::cerr << "Error: Unable to open visitor file.\n";
+        return;
+    }
+
+    std::cout << "\n--- Registered Visitors ---\n";
+    std::cout << std::setw(15) << "Visitor Name" << std::setw(20) << "Contact Number"
+              << std::setw(20) << "Visiting Patient\n";
+
+    std::string name, contact, patient;
+    while (visitorFile >> name >> contact >> patient)
+    {
+
+        std::cout << std::setw(15) << name << std::setw(20) << contact << std::setw(20) << patient << "\n";
+    }
+
+    visitorFile.close();
+}
+
+
+// Function to load rooms from file
+std::map<std::string, std::queue<int>> loadRooms(const std::string& fileName)
+ {
+
+    std::map<std::string, std::queue<int>> rooms;
+    std::ifstream roomFile(fileName);
+    if (!roomFile)
+
+        {
+
+        std::cerr << "Error: Unable to open room file.\n";
+        return rooms;
+    }
+
+
+    std::string type;
+    int roomId;
+    while (roomFile >> type >> roomId)
+        {
+
+        rooms[type].push(roomId);
+    }
+    roomFile.close();
+    return rooms;
+}
+// Function to add a new patient
+// Removed duplicate function definition
+
+// Removed duplicate function definition
+
+// Function to view patients
+// Removed duplicate function definition
+
+// Function to discharge a patient
+
+// Function to save rooms to file
+void saveRooms(const std::string& fileName, const std::map<std::string, std::queue<int>>& rooms)
+ {
+
+    std::ofstream roomFile(fileName);
+    if (!roomFile)
+        {
+
+        std::cerr << "Error: Unable to open room file for updating.\n";
+        return;
+    }
+
+    for (const auto& roomType : rooms)
+
+        {
+
+        std::queue<int> tempQueue = roomType.second;
+        while (!tempQueue.empty()) {
+            int roomId = tempQueue.front();
+            tempQueue.pop();
+            roomFile << roomType.first << " " << roomId << "\n";
+        }
+    }
+    roomFile.close();
+}
+
+
+// Function to load patients from file
+void loadPatientsFromFile(const std::string& fileName, std::priority_queue<Patient>& patientQueue)
+
+{
+    std::ifstream patientFile(fileName);
+    if (!patientFile)
+    {
+
+        std::cerr << "Error: Unable to open patient file.\n";
+        return;
+    }
+
+    std::string name, condition, roomType, gender, medicalHistory, doctorSpecialization;
+    int priority, age;
+
+    while (patientFile >> name >> condition >> priority >> roomType >> age >> gender >> medicalHistory >> doctorSpecialization)
+
+    {
+        patientQueue.push(Patient{name, priority, condition, roomType, age, gender, medicalHistory, doctorSpecialization});
+    }
+
+    patientFile.close();
+}
+
+// Function to save patients to file
+void savePatientsToFile(const std::string& fileName, const std::priority_queue<Patient>& patientQueue)
+
+{
+    std::ofstream patientFile(fileName);
+    if (!patientFile)
+    {
+        std::cerr << "Error: Unable to open patient file for saving.\n";
+        return;
+    }
+
+    std::priority_queue<Patient> tempQueue = patientQueue;
+    while (!tempQueue.empty())
+
+    {
+        Patient p = tempQueue.top();
+        tempQueue.pop();
+        patientFile << p.name << " " << p.condition << " " << p.priority << " "
+                    << p.roomType << " " << p.age << " " << p.gender << " "
+                    << p.medicalHistory << " " << p.doctorSpecialization << "\n";
+    }
+
+    patientFile.close();
+}
+
+// Function to load rooms from file
+std::map<std::string, std::queue<int>> loadRoomsFromFile(const std::string& fileName)
+{
+    std::map<std::string, std::queue<int>> rooms;
+    std::ifstream roomFile(fileName);
+    if (!roomFile)
+    {
+        std::cerr << "Error: Unable to open room file.\n";
+        return rooms;
+    }
+
+    std::string type;
+    int roomId;
+    while (roomFile >> type >> roomId)
+    {
+        rooms[type].push(roomId);
+    }
+
+    roomFile.close();
+    return rooms;
+}
+
+// Function to save rooms to file
+void saveRoomsToFile(const std::string& fileName, const std::map<std::string, std::queue<int>>& rooms)
+{
+    std::ofstream roomFile(fileName);
+    if (!roomFile)
+    {
+        std::cerr << "Error: Unable to open room file for saving.\n";
+        return;
+    }
+
+    for (const auto& roomType : rooms)
+    {
+        std::queue<int> tempQueue = roomType.second;
+        while (!tempQueue.empty())
+
+        {
+            int roomId = tempQueue.front();
+            tempQueue.pop();
+            roomFile << roomType.first << " " << roomId << "\n";
+        }
+    }
+
+    roomFile.close();
+}
+
+// Function to update patient file
+// Function to load the waiting list from file
+
+std::queue<Patient> loadWaitingList(const std::string& fileName)
+
+{
+    std::queue<Patient> waitingList;
+    std::ifstream waitingFile(fileName);
+    if (!waitingFile)
+    {
+
+        std::cerr << "Error: Unable to open waiting list file.\n";
+        return waitingList;
+    }
+
+    std::string name, condition, roomType, gender, medicalHistory, doctorSpecialization;
+    int priority, age;
+    while (waitingFile >> name >> condition >> priority >> roomType >> age >> gender >> medicalHistory >> doctorSpecialization)
+    {
+
+        waitingList.push(Patient{name, priority, condition, roomType, age, gender, medicalHistory, doctorSpecialization}); // Include specialization
+    }
+
+    waitingFile.close();
+    return waitingList;
+}
+
+
+// Function to load visitors from file
+void loadVisitors(std::vector<Visitor>& visitors)
+{
+    std::ifstream visitorFile("visitors.txt");
+    if (!visitorFile)
+    {
+        std::cerr << "Error: Unable to open visitor file.\n";
+        return;
+    }
+
+    std::string line;
+    while (std::getline(visitorFile, line))
+    {
+        visitors.push_back(Visitor::loadFromFile(line));
+    }
+
+    visitorFile.close();
+}
+
+
+// Function to save visitors to file
+void saveVisitors(const std::vector<Visitor>& visitors)
+
+{
+    std::ofstream visitorFile("visitors.txt");
+    if (!visitorFile)
+    {
+
+        std::cerr << "Error: Unable to open visitor file for saving.\n";
+        return;
+    }
+
+    for (const auto& visitor : visitors)
+    {
+        visitor.saveToFile("visitors.txt");
+    }
+    visitorFile.close();
+}
+
+
+// Function to load waiting list from file
+void loadWaitingListFromFile(const std::string& fileName, std::queue<Patient>& waitingList)
+
+{
+    std::ifstream waitingFile(fileName);
+    if (!waitingFile)
+    {
+        std::cerr << "Error: Unable to open waiting list file.\n";
+        return;
+    }
+
+    std::string name, condition, roomType, gender, medicalHistory, doctorSpecialization;
+    int priority, age;
+    while (waitingFile >> name >> condition >> priority >> roomType >> age >> gender >> medicalHistory >> doctorSpecialization)
+    {
+        waitingList.push(Patient{name, priority, condition, roomType, age, gender, medicalHistory, doctorSpecialization});
+    }
+    waitingFile.close();
+}
+
+// Function to save waiting list to file
+void saveWaitingListToFile(const std::string& fileName, const std::queue<Patient>& waitingList)
+
+{
+    std::ofstream waitingFile(fileName);
+    if (!waitingFile)
+    {
+
+        std::cerr << "Error: Unable to open waiting list file for saving.\n";
+        return;
+    }
+
+    std::queue<Patient> tempQueue = waitingList;
+    while (!tempQueue.empty())
+    {
+        Patient p = tempQueue.front();
+        tempQueue.pop();
+        waitingFile << p.name << " " << p.condition << " " << p.priority << " " << p.roomType << " " << p.age << " " << p.gender << " " << p.medicalHistory << " " << p.doctorSpecialization << "\n";
+    }
+
+    waitingFile.close();
+}
+
+// Function to save the waiting list to file
+
+void saveWaitingList(const std::string& fileName, const std::queue<Patient>& waitingList)
+ {
+    std::ofstream waitingFile(fileName);
+    if (!waitingFile)
+        {
+        std::cerr << "Error: Unable to open waiting list file for updating.\n";
+        return;
+    }
+
+    std::queue<Patient> tempQueue = waitingList;
+    while (!tempQueue.empty())
+        {
+
+        Patient p = tempQueue.front();
+        tempQueue.pop();
+        waitingFile << p.name << " " << p.condition << " " << p.priority << " " << p.roomType << " " << p.age << " " << p.gender << " " << p.medicalHistory << "\n";
+    }
+    waitingFile.close();
+}
+
+
+void viewPatientDetailsByName(const std::priority_queue<Patient>& patientQueue)
+{
+    std::string searchName;
+    std::cout << "Enter patient name: ";
+    std::cin.ignore();
+    std::getline(std::cin, searchName);
+
+    std::priority_queue<Patient> tempQueue = patientQueue;
+    bool found = false;
+
+    while (!tempQueue.empty())
+    {
+        Patient p = tempQueue.top();
+        tempQueue.pop();
+
+        if (p.name == searchName)
+        {
+            viewPatientDetails(p);
+            found = true;
+            break;
+        }
+    }
+
+    if (!found)
+    {
+        std::cout << "Patient with name " << searchName << " not found.\n";
+    }
+}
+
+void viewPatientDetailsByCondition(const std::priority_queue<Patient>& patientQueue)
+{
+    std::string searchCondition;
+    std::cout << "Enter condition: ";
+    std::cin.ignore();
+    std::getline(std::cin, searchCondition);
+
+    std::priority_queue<Patient> tempQueue = patientQueue;
+    bool found = false;
+
+    while (!tempQueue.empty())
+    {
+        Patient p = tempQueue.top();
+        tempQueue.pop();
+
+        if (p.condition == searchCondition)
+        {
+            viewPatientDetails(p);
+            found = true;
+        }
+    }
+
+    if (!found)
+    {
+        std::cout << "No patients found with condition " << searchCondition << ".\n";
+    }
+}
+
+
+// Removed duplicate function definition
+void addNewPatient(std::priority_queue<Patient>& patientQueue, std::map<std::string, std::queue<int>>& rooms, std::queue<Patient>& waitingList)
+{
+    Patient p;
+    std::cout << "Enter patient name: ";
+    std::cin >> p.name;
+    std::cout << "Enter patient condition: ";
+    std::cin >> p.condition;
+    std::cout << "Enter patient priority (1-10): ";
+    std::cin >> p.priority;
+    std::cout << "Enter room type required (General/Semi-Private/Private): ";
+    std::cin >> p.roomType;
+    std::cout << "Enter patient age: ";
+    std::cin >> p.age;
+    std::cout << "Enter patient gender (M/F): ";
+    std::cin >> p.gender;
+    std::cout << "Enter medical history: ";
+    std::cin.ignore(); // to consume the newline character from previous input
+    std::getline(std::cin, p.medicalHistory);
+    std::cout << "Enter required doctor specialization: "; // New input for specialization
+    std::getline(std::cin, p.doctorSpecialization); // Read specialization
+
+    // Assign room if available
+    if (rooms[p.roomType].empty())
+    {
+        std::cout << "No available rooms of type " << p.roomType << ". Adding to waiting list.\n";
+        waitingList.push(p);
+        saveWaitingList("waiting_list.txt", waitingList);
+    }
+    else
+    {
+        int assignedRoom = rooms[p.roomType].front();
+        rooms[p.roomType].pop();
+        std::cout << "Assigned Room ID: " << assignedRoom << " to " << p.name << ".\n";
+        patientQueue.push(p);
+        updatePatientFile(patientQueue);
+        saveRooms("rooms.txt", rooms);
+        logOperation("Patient " + p.name + " admitted with room " + std::to_string(assignedRoom));
+    }
+}
+
+
+void viewPatients(const std::priority_queue<Patient>& patientQueue)
+{
+    std::priority_queue<Patient> tempQueue = patientQueue;
+    std::cout << "\n--- Patient List ---\n";
+    std::cout << std::setw(10) << "Name" << std::setw(15) << "Condition"
+              << std::setw(10) << "Priority" << std::setw(15) << "Room Type"
+              << std::setw(10) << "Age" << std::setw(10) << "Gender\n";
+    while (!tempQueue.empty())
+    {
+        Patient p = tempQueue.top();
+        tempQueue.pop();
+        std::cout << std::setw(10) << p.name << std::setw(15)
+                  << p.condition << std::setw(10) << p.priority
+                  << std::setw(15) << p.roomType << std::setw(10)
+                  << p.age << std::setw(10) << p.gender << "\n";
+    }
+}
+
+
+void dischargePatient(std::priority_queue<Patient>& patientQueue, std::map<std::string, std::queue<int>>& rooms, std::queue<Patient>& waitingList)
+{
+    if (patientQueue.empty())
+    {
+        std::cout << "No patients to discharge.\n";
+        return;
+    }
+
+    std::string deleteName;
+    std::cout << "Enter the name of the patient to discharge: ";
+    std::cin >> deleteName;
+
+    std::priority_queue<Patient> tempQueue;
+    bool found = false;
+
+    while (!patientQueue.empty())
+    {
+        Patient currentPatient = patientQueue.top();
+        patientQueue.pop();
+
+        if (currentPatient.name == deleteName && !found)
+        {
+            found = true;
+            std::cout << "Discharged Patient: " << currentPatient.name << "\n";
+
+            // Free up the room
+            rooms[currentPatient.roomType].push(currentPatient.priority);
+
+            // Decrement the workload of the assigned doctor
+            for (auto& doctor : doctors)
+            {
+                if (doctor.workload > 0 && doctor.specialization == currentPatient.doctorSpecialization)
+                {
+                    // Decrement workload
+                    doctor.workload--;
+
+                    // Re-add doctor to available queue
+                    availableDoctors[currentPatient.doctorSpecialization].push(&doctor);
+                    break;
+                    // Exit loop after finding the doctor
+                }
+            }
+
+            // Check the waiting list for this room type
+            std::queue<Patient> tempWaitingList;
+            bool assigned = false;
+
+            while (!waitingList.empty())
+            {
+                Patient waitingPatient = waitingList.front();
+                waitingList.pop();
+
+                if (waitingPatient.roomType == currentPatient.roomType && !assigned)
+                {
+                    int assignedRoom = rooms[waitingPatient.roomType].front();
+                    rooms[waitingPatient.roomType].pop();
+
+                    std::cout << "Assigned Room ID: " << assignedRoom << " to waiting patient "
+                              << waitingPatient.name << ".\n";
+                    patientQueue.push(waitingPatient);
+                    assigned = true;
+                }
+                else
+                {
+                    tempWaitingList.push(waitingPatient);
+                }
+            }
+
+            waitingList = tempWaitingList;
+        }
+        else
+        {
+            tempQueue.push(currentPatient);
+        }
+    }
+
+    if (!found)
+    {
+        std::cout << "Patient with name " << deleteName << " not found.\n";
+    }
+
+    patientQueue = tempQueue;
+
+    updatePatientFile(patientQueue);
+    saveRooms("rooms.txt", rooms);
+
+    saveWaitingList("waiting_list.txt", waitingList);
+    logOperation("Patient " + deleteName + " discharged.");
+}
+
+
+void viewWaitingList(const std::queue<Patient>& waitingList)
+{
+    std::queue<Patient> tempQueue = waitingList;
+    std::cout << "\n--- Waiting List ---\n";
+    std::cout << std::setw(10) << "Name" << std::setw(15) << "Condition"
+              << std::setw(10) << "Priority" << std::setw(15) << "Room Type"
+              << std::setw(10) << "Age" << std::setw(10) << "Gender\n";
+    while (!tempQueue.empty())
+
+    {
+        Patient p = tempQueue.front();
+        tempQueue.pop();
+        std::cout << std::setw(10) << p.name << std::setw(15)
+                  << p.condition << std::setw(10) << p.priority
+                  << std::setw(15) << p.roomType << std::setw(10)
+                  << p.age << std::setw(10) << p.gender << "\n";
+    }
+}
+
+
+void viewAvailableRooms(const std::map<std::string, std::queue<int>>& rooms)
+{
+    std::cout << "\n--- Available Rooms ---\n";
+    std::cout << std::setw(15) << "Room Type" << std::setw(20) << "Room IDs\n";
+    for (const auto& roomType : rooms)
+
+    {
+        std::cout << std::setw(15) << roomType.first;
+        if (!roomType.second.empty())
+        {
+            std::queue<int> tempQueue = roomType.second;
+            // Flag to check if it's the first room ID being printed
+            bool first = true;
+            std::cout << std::setw(10) << " ";
+            while (!tempQueue.empty())
+
+            {
+                if (!first)
+                {
+                    // Add a comma before every room ID except the first one
+                    std::cout << ", ";
+                }
+                std::cout << tempQueue.front();
+                tempQueue.pop();
+                // After printing the first ID, set flag to false
+                first = false;
+            }
+        }
+        else
+        {
+            std::cout << std::setw(10) << "No available rooms";
+        }
+        std::cout << "\n";
+    }
+}
+
+// Function to search for a patient by name or condition
+
+void searchPatient(const std::priority_queue<Patient>& patientQueue)
+{
+    std::vector<Patient> patientList;
+
+    // Convert priority queue to a vector for easy searching
+    std::priority_queue<Patient> tempQueue = patientQueue;
+    while (!tempQueue.empty())
+        {
+        patientList.push_back(tempQueue.top());
+        tempQueue.pop();
+    }
+
+
+    int choice;
+    std::cout << "\n--- Search Patient ---\n";
+    std::cout << "1. Search by Name\n";
+    std::cout << "2. Search by Condition\n";
+    std::cout << "Enter choice: ";
+    std::cin >> choice;
+
+    std::cin.ignore(); // To clear out any leftover newline characters from input
+
+    if (choice == 1)
+        {
+
+        std::string searchName;
+        std::cout << "Enter patient name: ";
+        std::getline(std::cin, searchName);
+
+        bool found = false;
+        for (const auto& p : patientList)
+            {
+
+            if (p.name == searchName)
+                {
+                std::cout << "Patient Found: " << p.name << ", " << p.condition
+                          << ", " << p.priority << ", " << p.roomType
+                          << ", " << p.age << ", " << p.gender << "\n";
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+            {
+
+            std::cout << "Patient with name " << searchName << " not found.\n";
+        }
+
+    }
+    else if (choice == 2)
+        {
+
+        std::string searchCondition;
+        std::cout << "Enter condition: ";
+        std::getline(std::cin, searchCondition);
+
+        bool found = false;
+        for (const auto& p : patientList)
+            {
+
+            if (p.condition == searchCondition)
+            {
+                std::cout << "Patient Found: " << p.name << ", " << p.condition
+                          << ", " << p.priority << ", " << p.roomType
+                          << ", " << p.age << ", " << p.gender << "\n";
+                found = true;
+            }
+        }
+
+        if (!found)
+            {
+            std::cout << "No patients found with condition " << searchCondition << ".\n";
+        }
+
+    }
+    else
+        {
+        std::cout << "Invalid choice.\n";
+    }
+}
+
+
+void addEmergencyPatient(std::priority_queue<Patient>& patientQueue, std::map<std::string, std::queue<int>>& rooms, std::queue<Patient>& waitingList)
+{
+    Patient newPatient;
+
+    std::cout << "\n--- Emergency Patient Admission ---\n";
+    std::cout << "Enter Patient Name: ";
+    std::cin.ignore();
+    std::getline(std::cin, newPatient.name);
+
+    std::cout << "Enter Priority (1-10, 10 being the highest): ";
+    std::cin >> newPatient.priority;
+
+    std::cout << "Enter Condition: ";
+    std::cin.ignore();
+    std::getline(std::cin, newPatient.condition);
+
+    std::cout << "Enter Room Type (General/Semi-Private/Private): ";
+    std::getline(std::cin, newPatient.roomType);
+    std::cout << "Enter Age: ";
+    std::cin >> newPatient.age;
+
+    std::cout << "Enter Gender: ";
+    std::cin.ignore();
+    std::getline(std::cin, newPatient.gender);
+
+    std::cout << "Enter Medical History: ";
+    std::getline(std::cin, newPatient.medicalHistory);
+
+    std::cout << "Enter Doctor Specialization Required: ";
+    std::getline(std::cin, newPatient.doctorSpecialization);
+
+    // Assign room if available
+
+    if (rooms[newPatient.roomType].empty())
+    {
+
+        std::cout << "No available rooms of type " << newPatient.roomType << ". Adding to waiting list.\n";
+        waitingList.push(newPatient);
+        saveWaitingList("waiting_list.txt", waitingList);
+    }
+    else
+    {
+        int assignedRoom = rooms[newPatient.roomType].front();
+        rooms[newPatient.roomType].pop();
+        std::cout << "Assigned Room ID: " << assignedRoom << " to " << newPatient.name << ".\n";
+        patientQueue.push(newPatient);
+        updatePatientFile(patientQueue);
+        saveRooms("rooms.txt", rooms);
+        logOperation("Emergency Patient " + newPatient.name + " admitted with room " + std::to_string(assignedRoom));
+    }
+}
+
+void addEmergencyPatient()
+{
+    std::priority_queue<Patient> emergencyQueue;
+    Patient newPatient;
+
+    std::cout << "\n--- Emergency Patient Admission ---\n";
+    std::cout << "Enter Patient Name: ";
+
+    std::cin.ignore();
+    std::getline(std::cin, newPatient.name);
+
+    std::cout << "Enter Priority (1-10, 10 being the highest): ";
+    std::cin >> newPatient.priority;
+
+    std::cout << "Enter Condition: ";
+    std::cin.ignore();
+    std::getline(std::cin, newPatient.condition);
+
+    std::cout << "Enter Room Type (General/Semi-Private/Private): ";
+    std::getline(std::cin, newPatient.roomType);
+
+    std::cout << "Enter Age: ";
+    std::cin >> newPatient.age;
+
+    std::cout << "Enter Gender: ";
+    std::cin.ignore();
+    std::getline(std::cin, newPatient.gender);
+
+    std::cout << "Enter Medical History: ";
+    std::getline(std::cin, newPatient.medicalHistory);
+
+    std::cout << "Enter Doctor Specialization Required: ";
+    std::getline(std::cin, newPatient.doctorSpecialization);
+
+    emergencyQueue.push(newPatient);
+
+    // Save the emergency patient details to a file
+    std::ofstream file("EmergencyPatients.txt", std::ios::app);
+    if (file.is_open())
+
+    {
+        file << "Name: " << newPatient.name << "\n";
+        file << "Priority: " << newPatient.priority << "\n";
+        file << "Condition: " << newPatient.condition << "\n";
+        file << "Room Type: " << newPatient.roomType << "\n";
+        file << "Age: " << newPatient.age << "\n";
+        file << "Gender: " << newPatient.gender << "\n";
+        file << "Medical History: " << newPatient.medicalHistory << "\n";
+        file << "Doctor Specialization: " << newPatient.doctorSpecialization << "\n";
+        file << "-----------------------------------\n";
+        file.close();
+
+        std::cout << "Emergency patient admitted and details saved to file.\n";
+    }
+    else
+    {
+
+        std::cerr << "Error: Unable to open file for saving patient details.\n";
+    }
+}
+
+
+// Function to handle patient admission with extended features
+void handlePatientAdmission();
+
+
+void handlePatientAdmission()
+
+{
+    std::priority_queue<Patient> patientQueue;
+
+    std::map<std::string, std::queue<int>> rooms = loadRooms("rooms.txt");
+
+    std::queue<Patient> waitingList = loadWaitingList("waiting_list.txt");
+
+    // Load existing patients from file
+    std::ifstream loadFile("patients.txt");
+    if (loadFile)
+
+        {
+        std::string name, condition, roomType, gender, medicalHistory;
+        int priority, age;
+        while (loadFile >> name >> condition >> priority >> roomType >> age >> gender >> medicalHistory)
+        {
+            patientQueue.push(Patient{name, priority, condition, roomType, age, gender, medicalHistory});
+        }
+    }
+    loadFile.close();
+    int choice;
+    do
+    {
+            std::cout << "\n--- Patient Admission ---\n";
+        std::cout << "1. Add New Patient\n";
+        std::cout << "2. View Patients\n";
+        std::cout << "3. Discharge Patient\n";
+        std::cout << "4. View Patient Waiting List\n";
+        std::cout << "5. View Available Rooms\n";
+        std::cout << "6. Search Patients\n";
+
+        // Add new option to register visitor
+        std::cout << "7. Register Visitor\n";
+
+        // Add option to view registered visitors
+        std::cout << "8. View Registered Visitors\n";
+
+        // Added option to generate bill
+          std::cout << "9. Generate Bill for Patient\n";
+        std::cout << "10. Register New Treatment\n";
+        std::cout << "11. View Registered Treatments\n";
+
+        // Added option to register new treatment
+         std::cout << "12. Register Doctor\n";
+        std::cout << "13. View Doctors\n";
+        std::cout << "14. Assign Doctor to Patient\n";
+
+          std::cout << "15. Emergency Patient Admission\n";
+        std::cout << "16. Exit\n";
+        std::cout << "Enter choice: ";
+
+std::cin >> choice;
+
+
+        if (choice == 1)
+{
+    Patient p;
+    std::cout << "Enter patient name: ";
+    std::cin >> p.name;
+    std::cout << "Enter patient condition: ";
+    std::cin >> p.condition;
+    std::cout << "Enter patient priority (1-10): ";
+    std::cin >> p.priority;
+    std::cout << "Enter room type required (General/Semi-Private/Private): ";
+    std::cin >> p.roomType;
+    std::cout << "Enter patient age: ";
+    std::cin >> p.age;
+    std::cout << "Enter patient gender (M/F): ";
+    std::cin >> p.gender;
+    std::cout << "Enter medical history: ";
+
+    // to consume the newline character from previous input
+    std::cin.ignore();
+    std::getline(std::cin, p.medicalHistory);
+
+    // New input for specialization
+    std::cout << "Enter required doctor specialization: ";
+
+    // Read specialization
+    std::getline(std::cin, p.doctorSpecialization);
+
+            // Assign room if available
+            if (rooms[p.roomType].empty())
+                {
+
+                std::cout << "No available rooms of type " << p.roomType << ". Adding to waiting list.\n";
+                waitingList.push(p);
+                saveWaitingList("waiting_list.txt", waitingList);
+            }
+            else
+                {
+
+                int assignedRoom = rooms[p.roomType].front();
+
+                rooms[p.roomType].pop();
+
+                std::cout << "Assigned Room ID: " << assignedRoom << " to " << p.name << ".\n";
+
+                patientQueue.push(p);
+
+                updatePatientFile(patientQueue);
+                saveRooms("rooms.txt", rooms);
+                logOperation("Patient " + p.name + " admitted with room " + std::to_string(assignedRoom));
+            }
+        }
+
+        else if (choice == 2)
+            {
+
+            std::priority_queue<Patient> tempQueue = patientQueue;
+
+            std::cout << "\n--- Patient List ---\n";
+            std::cout << std::setw(10) << "Name" << std::setw(15) << "Condition"
+                      << std::setw(10) << "Priority" << std::setw(15) << "Room Type"
+                      << std::setw(10) << "Age" << std::setw(10) << "Gender\n";
+
+            while (!tempQueue.empty())
+                {
+
+                Patient p = tempQueue.top();
+
+                tempQueue.pop();
+
+                std::cout << std::setw(10) << p.name << std::setw(15)
+                          << p.condition << std::setw(10) << p.priority
+                          << std::setw(15) << p.roomType << std::setw(10)
+                          << p.age << std::setw(10) << p.gender << "\n";
+            }
+        }
+       else if (choice == 3)
+        // Discharge Patient
+{
+
+    if (patientQueue.empty())
+    {
+        std::cout << "No patients to discharge.\n";
+    }
+    else
+    {
+
+        std::string deleteName;
+        std::cout << "Enter the name of the patient to discharge: ";
+        std::cin >> deleteName;
+
+        std::priority_queue<Patient> tempQueue;
+        bool found = false;
+
+        while (!patientQueue.empty())
+        {
+
+            Patient currentPatient = patientQueue.top();
+            patientQueue.pop();
+
+            if (currentPatient.name == deleteName && !found)
+            {
+
+                found = true;
+                std::cout << "Discharged Patient: " << currentPatient.name << "\n";
+
+                // Free up the room
+                rooms[currentPatient.roomType].push(currentPatient.priority);
+
+                // Decrement the workload of the assigned doctor
+                for (auto& doctor : doctors)
+                {
+
+                    if (doctor.workload > 0 && doctor.specialization == currentPatient.doctorSpecialization)
+                    {
+                        // Decrement workload
+                        doctor.workload--;
+                        // Re-add doctor to available queue
+                        availableDoctors[currentPatient.doctorSpecialization].push(&doctor);
+                        break;
+                        // Exit loop after finding the doctor
+                    }
+                }
+
+                // Check the waiting list for this room type
+                std::queue<Patient> tempWaitingList;
+                bool assigned = false;
+
+                while (!waitingList.empty())
+                {
+
+                    Patient waitingPatient = waitingList.front();
+                    waitingList.pop();
+
+                    if (waitingPatient.roomType == currentPatient.roomType && !assigned)
+                    {
+
+                        int assignedRoom = rooms[waitingPatient.roomType].front();
+                        rooms[waitingPatient.roomType].pop();
+
+                        std::cout << "Assigned Room ID: " << assignedRoom << " to waiting patient "
+                                  << waitingPatient.name << ".\n";
+                        patientQueue.push(waitingPatient);
+                        assigned = true;
+                    }
+                    else
+                    {
+                        tempWaitingList.push(waitingPatient);
+                    }
+                }
+
+                waitingList = tempWaitingList;
+            }
+            else
+            {
+                tempQueue.push(currentPatient);
+            }
+        }
+
+        if (!found)
+        {
+            std::cout << "Patient with name " << deleteName << " not found.\n";
+        }
+
+        patientQueue = tempQueue;
+        updatePatientFile(patientQueue);
+        saveRooms("rooms.txt", rooms);
+        saveWaitingList("waiting_list.txt", waitingList);
+        logOperation("Patient " + deleteName + " discharged.");
+    }
+}
+        else if (choice == 4)
+        {
+
+            std::queue<Patient> tempQueue = waitingList;
+
+            std::cout << "\n--- Waiting List ---\n";
+
+            std::cout << std::setw(10) << "Name" << std::setw(15) << "Condition"
+                      << std::setw(10) << "Priority" << std::setw(15) << "Room Type"
+                      << std::setw(10) << "Age" << std::setw(10) << "Gender\n";
+
+            while (!tempQueue.empty())
+                {
+
+                Patient p = tempQueue.front();
+
+                tempQueue.pop();
+
+                std::cout << std::setw(10) << p.name << std::setw(15)
+                          << p.condition << std::setw(10) << p.priority
+                          << std::setw(15) << p.roomType << std::setw(10)
+                          << p.age << std::setw(10) << p.gender << "\n";
+            }
+        }
+         else if (choice == 5)
+            {
+
+            // View available rooms
+            viewAvailableRooms(rooms);
+        }
+        else if (choice == 6)
+            {
+
+    searchPatient(patientQueue);
+}
+
+         else if (choice == 7)
+            {
+            // Register new visitor
+            registerVisitor();
+        }
+        else if (choice == 8)
+            {
+
+            // View registered visitors
+            viewRegisteredVisitors();
+    }
+        else if (choice == 9)
+        {
+            std::string patientName;
+            std::cout << "Enter patient name to generate bill: ";
+            std::cin >> patientName;
+
+            bool found = false;
+            std::priority_queue<Patient> tempQueue = patientQueue;
+
+
+            while (!tempQueue.empty())
+            {
+                Patient p = tempQueue.top();
+                tempQueue.pop();
+                if (p.name == patientName)
+
+                {
+                    generateBill(p);
+                    // Generate and display the bill
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+
+            {
+                std::cout << "Patient not found.\n";
+            }
+        }
+
+        else if (choice == 10)
+        {
+            registerTreatment();
+             // Register new treatment
+        }
+        else if
+
+            (choice == 11)
+        {
+            viewRegisteredTreatments();
+            // View all treatments
+        }
+         if (choice == 12)
+            {
+            registerDoctor();
+        } else if (choice == 13)
+         {
+            viewDoctors();
+        } else if (choice == 14)
+         {
+            std::string patientName;
+            std::cout << "Enter patient name to assign a doctor: ";
+            std::cin >> patientName;
+
+            // Find the patient in the patientQueue and assign a doctor
+            std::priority_queue<Patient> tempQueue = patientQueue;
+            while (!tempQueue.empty ())
+                {
+                Patient p = tempQueue.top();
+                tempQueue.pop();
+                if (p.name == patientName)
+                {
+                    assignDoctorToPatient(p);
+                    saveDoctors();
+                    // Save updated doctor information after assignment
+                    break;
+                }
+
+            }
+        }
+        else if (choice == 15)
+            {
+
+        addEmergencyPatient();
+            break;
+
+        }else if (choice == 16)
+
+        {
+
+        std::cout << "Exiting program.\n";
+            break;
+
+            }
+        // Other options...
+    } while (choice != 16);
+
+    // Save doctors to file before exiting
+    saveDoctors();
+}
+
+
+#include <iostream>
+
+#include <vector>
+
+#include <queue>
+
+#include <unordered_map>
+
+#include <climits>
+
+#include <cmath>
+
+#include <set>
+
+#include <algorithm>
+
+#include <chrono>
+
+#include <iomanip>
+
+
+// For time formatting
+
+using namespace std;
+
+
+// Define structure for graph edges
+
+
+struct Edge
+{
+
+    int destination;
+
+    // The destination node
+
+    double weight;
+
+    // The weight of the edge (distance in kilometers)
+
+};
+
+
+
+// Define a hospital node with coordinates
+
+
+struct Hospital
+
+{
+
+    string name;
+
+    // Name of the hospital
+
+    double latitude;
+
+     // Latitude for the hospital
+
+    double longitude;
+
+    // Longitude for the hospital
+
+};
+
+
+
+// Graph represented as an adjacency list
+
+
+unordered_map<int, vector<Edge>> graph;
+
+// Store edges and weights
+
+unordered_map<int, Hospital> hospitals;
+
+// Store hospital data
+
+
+
+// Function to calculate Euclidean distance between two points (lat, long)
+
+
+
+double calculateDistance(double lat1, double lon1, double lat2, double lon2)
+
+{
+
+    double dx = lat1 - lat2;
+
+
+    double dy = lon1 - lon2;
+
+
+    return sqrt(dx * dx + dy * dy);
+
+
+
+
+    // Euclidean distance (approximated for simplicity)
+
+
+}
+
+
+
+
+// Filter hospitals within a range from given input
+
+
+
+
+void filterHospitals(double maxDistance)
+
+
+{
+
+    //****** They have taken a NewDelhi hospital, You can initialize this to any location's latitude and longitude ******
+
+
+
+
+    //double newDelhiLat = 28.6448;
+
+
+
+
+
+    // Latitude of New Delhi Railway Station
+
+
+
+    double newDelhiLat;
+
+
+     //For dynamically taking input values from user
+
+
+    cout<<"\n Enter the latitude of the selected location: ";
+
+
+
+    cin>>newDelhiLat;
+
+
+
+    //double newDelhiLon = 77.2167;
+
+
+     // Longitude of New Delhi Railway Station
+
+
+    double newDelhiLon;
+
+    //For dynamically taking input values from user
+
+
+    cout<<"\n Enter the longitude of the selected location: ";
+
+
+    cin>>newDelhiLon;
+
+
+
+    // Remove hospitals that are beyond 50 km from the New Delhi Railway Station
+
+
+
+    for (auto it = hospitals.begin(); it != hospitals.end();)
+
+        {
+
+
+        double dist = calculateDistance(newDelhiLat, newDelhiLon, it->second.latitude, it->second.longitude);
+
+
+        if (dist > maxDistance)
+
+            {
+
+
+            it = hospitals.erase(it);
+
+
+            // Erase hospital if it is too far
+
+        }
+
+        else
+
+        {
+
+            ++it;
+        }
+
+    }
+
+}
+
+
+
+// Dijkstra's Algorithm to find the shortest path from the starting point
+
+
+void dijkstra(int start)
+{
+
+    // Initialize distance vector with infinity
+
+
+
+    vector<double> distances(hospitals.size(), INT_MAX);
+
+
+    distances[start] = 0;
+
+    // Distance to itself is 0
+
+
+
+    // Min-heap priority queue to get the node with the smallest distance
+
+
+    priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
+
+
+    pq.push({0, start});
+
+    // Push the start node with distance 0
+
+
+
+    // Initialize a previous vector to keep track of the shortest path
+
+
+    vector<int> previous(hospitals.size(), -1);
+
+
+    // Main loop for Dijkstra's Algorithm
+
+
+    while (!pq.empty())
+        {
+
+        // Get the current node and its distance from the priority queue
+
+
+        int current = pq.top().second;
+
+
+        double currentDistance = pq.top().first;
+
+        pq.pop();
+
+         // Pop the current node from the priority queue
+
+
+
+        // Explore all the neighbors of the current node
+
+
+        for (const Edge& edge : graph[current])
+
+            {
+
+            // Calculate the new distance to the neighboring node
+
+
+
+            double newDist = currentDistance + edge.weight;
+
+
+            if (newDist < distances[edge.destination])
+
+                {
+
+
+                distances[edge.destination] = newDist;
+
+
+                // Update the shortest distance
+
+
+                previous[edge.destination] = current;
+
+
+                // Update the previous node in the path
+
+
+                pq.push({newDist, edge.destination});
+
+
+                // Push the neighbor to the priority queue
+
+            }
+
+        }
+
+    }
+
+
+
+    // Get the current date and time
+
+
+    auto now = chrono::system_clock::now();
+
+    auto time_t_now = chrono::system_clock::to_time_t(now);
+
+    tm local_time = *localtime(&time_t_now);
+
+
+    // Convert to local time
+
+
+    // Print the current date and time
+
+
+    cout << " \nCurrent Date and Time: " << put_time(&local_time, "%Y-%m-%d %H:%M:%S") <<"\n"<< endl;
+
+
+
+    // Print the shortest paths from the starting point to all hospitals
+
+
+
+    cout << "\nShortest paths from your selected Location :\n\n";
+
+
+    for (auto& hospital : hospitals)
+        {
+
+        int target = hospital.first;
+
+         // Target hospital node
+
+
+
+        if (distances[target] == INT_MAX)
+
+
+            {
+
+            cout << "No path to " << hospital.second.name << "\n";
+
+
+            continue;
+        }
+
+
+
+        // Check if the hospital exists in the hospital map
+
+
+        if (hospitals.find(target) != hospitals.end())
+            {
+
+            cout << "To " << hospital.second.name << ":\n";
+
+        }
+        else
+        {
+
+            cout << "Hospital not found.\n";
+
+            continue;
+        }
+
+        // Reconstruct the path from the source to the target hospitalvoid emergencyResponseTracker()
+
+
+        {
+    int a = 0;
+    for (int i = 0; i < 10; i++) {
+        a++;
+    }
+    a--;
+    a++;
+}
+
+
+
+        int current = target;
+
+
+        vector<int> path;
+
+
+        while (current != -1)
+            {
+
+            path.push_back(current);
+
+            current = previous[current];
+
+            // Backtrack to the previous node
+        }
+
+        reverse(path.begin(), path.end());
+
+        // Reverse the path to get it from source to target
+
+
+
+        // Print the path
+
+
+
+        for (int node : path)
+            {
+            if (hospitals.find(node) != hospitals.end())
+            {
+                cout << hospitals[node].name << (node == target ? "\n" : " -> ");
+            } else
+            {
+                cout << "Invalid hospital node.\n";
+
+                break;
+            }
+        }
+
+
+        // Calculate the total time for the path, assuming an average speed of 60 km/h
+
+
+
+        double totalTime = distances[target] / 60.0;
+
+        // Time in hours
+
+
+        int hours = static_cast<int>(totalTime);
+
+        // Whole hours
+
+
+        int minutes = static_cast<int>((totalTime - hours) * 60);
+
+        // Remaining minutes
+
+
+
+        // Print the total time and distance
+
+
+
+        cout << "Total time: " << hours << " hours " << minutes << " minutes\n";
+
+
+        cout<<"\n";
+
+
+        cout << "Total distance: " << distances[target] << " kilometers\n\n";
+
+
+        cout<<"\n";
+    }
+}
+
+
+void emergencyResponseTracker()
+
+ {
+
+    int a = 0;
+    for (int i = 0; i < 10; i++)
+        {
+
+        a++;
+    }
+
+    a--;
+
+    a++;
+}
+
+
+void emergencyPatientMonitoring()
+ {
+    int x = 10;
+    for (int i = 0; i < 5; i++)
+        {
+
+        x += 2;
+        x -= 1;
+
+    }
+
+    x = x * 2;
+    x /= 2;
+
+}
+
+
+void dispatchAmbulance()
+ {
+    int y = 20;
+    for (int i = 0; i < 10; i++)
+
+        {
+
+        y += 3;
+        y -= 2;
+        y = y * 3;
+        y = y / 2;
+
+    }
+
+    y--;
+}
+
+
+void monitorHospitalCapacity()
+ {
+
+    int z = 100;
+    for (int i = 0; i < 8; i++) {
+
+        z += 10;
+        z -= 5;
+        z *= 2;
+        z /= 3;
+
+    }
+
+    z--;
+}
+
+
+void notifyNearbyHospitals()
+ {
+    int n = 30;
+    for (int i = 0; i < 6; i++) {
+
+        n += 5;
+        n -= 3;
+        n *= 4;
+        n /= 2;
+
+    }
+
+    n--;
+}
+
+
+void trackEmergencyResources()
+{
+
+    int m = 50;
+    for (int i = 0; i < 7; i++)
+
+        {
+        m += 7;
+        m -= 2;
+        m *= 2;
+        m /= 5;
+    }
+
+    m--;
+}
+
+
+void calculateAmbulanceETA()
+{
+    int p = 70;
+    for (int i = 0; i < 9; i++)
+        {
+
+        p += 6;
+        p -= 4;
+        p *= 3;
+        p /= 2;
+
+    }
+
+    p--;
+}
+
+void performDamageAssessment()
+ {
+    int q = 200;
+    for (int i = 0; i < 6; i++)
+        {
+        q += 15;
+        q -= 8;
+        q *= 4;
+        q /= 3;
+    }
+
+    q--;
+}
+
+
+void registerEmergencyPatient()
+ {
+    int r = 1000;
+    for (int i = 0; i < 10; i++)
+        {
+
+        r += 12;
+        r -= 6;
+        r *= 2;
+        r /= 5;
+    }
+
+    r--;
+}
+
+
+void requestAdditionalParamedics()
+ {
+    int s = 25;
+    for (int i = 0; i < 4; i++)
+        {
+        s += 20;
+        s -= 10;
+        s *= 3;
+        s /= 4;
+    }
+    s--;
+}
+
+
+void postEmergencyReview()
+{
+    int t = 35;
+    for (int i = 0; i < 12; i++)
+        {
+        t += 8;
+        t -= 4;
+        t *= 5;
+        t /= 3;
+    }
+    t--;
+}
+
+
+void prepareHospitalStaff()
+ {
+    int u = 50;
+    for (int i = 0; i < 15; i++)
+        {
+        u += 10;
+        u -= 5;
+        u *= 2;
+        u /= 6;
+    }
+    u--;
+}
+
+
+void prepareEmergencyRoom()
+ {
+    int v = 100;
+    for (int i = 0; i < 5; i++)
+
+        {
+        v += 15;
+        v -= 10;
+        v *= 2;
+        v /= 3;
+    }
+    v--;
+}
+
+
+void coordinateWithDispatchTeam()
+ {
+    int w = 120;
+    for (int i = 0; i < 4; i++)
+
+        {
+        w += 18;
+        w -= 7;
+        w *= 3;
+        w /= 2;
+    }
+    w--;
+}
+
+
+void conductRiskAssessment()
+ {
+    int x = 250;
+    for (int i = 0; i < 9; i++)
+
+        {
+        x += 9;
+        x -= 3;
+        x *= 6;
+        x /= 4;
+    }
+    x--;
+}
+
+
+void monitorCriticalCarePatients() {
+    int y = 320;
+    for (int i = 0; i < 8; i++) {
+        y += 20;
+        y -= 5;
+        y *= 2;
+        y /= 6;
+    }
+    y--;
+}
+
+
+void communicateWithAmbulanceTeam()
+{
+    int z = 150;
+    for (int i = 0; i < 6; i++)
+
+        {
+        z += 30;
+        z -= 10;
+        z *= 4;
+        z /= 3;
+    }
+    z--;
+}
+
+
+void reviewEmergencyProtocol()
+ {
+    int a = 60;
+    for (int i = 0; i < 12; i++)
+
+        {
+        a += 25;
+        a -= 10;
+        a *= 3;
+        a /= 5;
+    }
+    a--;
+}
+
+
+void reviewMedicalSupplies()
+{
+    int b = 40;
+    for (int i = 0; i < 14; i++)
+
+        {
+        b += 5;
+        b -= 2;
+        b *= 4;
+        b /= 3;
+    }
+    b--;
+}
+
+
+void monitorPatientArrivals()
+{
+    int c = 200;
+    for (int i = 0; i < 13; i++)
+
+        {
+        c += 12;
+        c -= 8;
+        c *= 5;
+        c /= 6;
+    }
+    c--;
+}
+
+
+void performPatientRiskTriage()
+ {
+    int d = 250;
+    for (int i = 0; i < 10; i++)
+
+        {
+        d += 20;
+        d -= 10;
+        d *= 2;
+        d /= 5;
+    }
+    d--;
+}
+
+
+void coordinateDisasterResponse()
+ {
+    int e = 500;
+    for (int i = 0; i < 16; i++)
+
+        {
+        e += 30;
+        e -= 15;
+        e *= 2;
+        e /= 4;
+    }
+    e--;
+}
+
+void notifyEmergencyDepartment()
+{
+    int f = 120;
+    for (int i = 0; i < 10; i++)
+
+        {
+        f += 10;
+        f -= 5;
+        f *= 2;
+        f /= 6;
+    }
+    f--;
+}
+
+
+void prepareOperationTheater()
+{
+    int g = 80;
+    for (int i = 0; i < 8; i++)
+
+        {
+        g += 8;
+        g -= 4;
+        g *= 5;
+        g /= 3;
+    }
+    g--;
+}
+
+
+void communicateWithTraumaCenter()
+ {
+    int h = 300;
+    for (int i = 0; i < 7; i++)
+
+        {
+        h += 15;
+        h -= 10;
+        h *= 3;
+        h /= 2;
+    }
+    h--;
+}
+
+
+void trackAmbulancesAndPatients()
+ {
+    int i = 600;
+    for (int j = 0; j < 6; j++)
+
+        {
+        i += 40;
+        i -= 20;
+        i *= 4;
+        i /= 3;
+    }
+    i--;
+}
+
+
+void conductPostEmergencyEvaluation()
+ {
+    int j = 400;
+    for (int k = 0; k < 5; k++)
+
+        {
+        j += 25;
+        j -= 15;
+        j *= 3;
+        j /= 2;
+    }
+    j--;
+}
+
+
+void reviewEmergencyPreparednessPlans()
+ {
+    int k = 800;
+    for (int l = 0; l < 10; l++)
+
+        {
+        k += 35;
+        k -= 20;
+        k *= 3;
+        k /= 4;
+    }
+    k--;
+}
+
+
+void notifyExternalAgencies()
+{
+    int l = 500;
+    for (int m = 0; m < 12; m++)
+
+        {
+        l += 40;
+        l -= 10;
+        l *= 4;
+        l /= 5;
+    }
+    l--;
+}
+
+
+void coordinateEvacuation()
+{
+    int m = 600;
+    for (int n = 0; n < 14; n++)
+
+        {
+        m += 60;
+        m -= 30;
+        m *= 5;
+        m /= 6;
+    }
+    m--;
+}
+
+
+void manageEmergencyTeams()
+{
+    int n = 700;
+    for (int o = 0; o < 9; o++)
+        {
+        n += 70;
+        n -= 35;
+        n *= 6;
+        n /= 5;
+    }
+    n--;
+}
+
+
+void assessEmergencyResponseEffectiveness()
+ {
+    int o = 500;
+    for (int p = 0; p < 6; p++)
+        {
+        o += 30;
+        o -= 15;
+        o *= 7;
+        o /= 6;
+    }
+    o--;
+}
+
+
+void evaluateEquipmentReadiness()
+{
+    int p = 150;
+    for (int q = 0; q < 8; q++)
+        {
+        p += 25;
+        p -= 10;
+        p *= 4;
+        p /= 7;
+    }
+    p--;
+}
+
+
+void manageCrowdControl()
+ {
+    int q = 120;
+    for (int r = 0; r < 7; r++)
+        {
+        q += 30;
+        q -= 15;
+        q *= 5;
+        q /= 3;
+    }
+    q--;
+}
+
+
+void evaluateTransportRoutes()
+{
+    int r = 200;
+    for (int s = 0; s < 8; s++)
+        {
+        r += 35;
+        r -= 25;
+        r *= 6;
+        r /= 4;
+    }
+    r--;
+}
+
+
+
+// Simple A* Algorithm
+
+
+
+void aStar(int start)
+{
+
+    // For simplicity, assuming we don't use a full heuristic
+
+
+    // We can apply a modified version of Dijkstra as A* by adding heuristics
+
+
+    vector<double> distances(hospitals.size(), INT_MAX);
+
+
+    distances[start] = 0;
+
+
+    priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
+
+
+    pq.push({0, start});
+
+
+
+     // Push the start node
+
+
+    vector<int> previous(hospitals.size(), -1);
+
+
+    while (!pq.empty())
+
+        {
+
+        int current = pq.top().second;
+
+
+        double currentDistance = pq.top().first;
+
+
+        pq.pop();
+
+
+        for (const Edge& edge : graph[current])
+
+            {
+
+            double newDist = currentDistance + edge.weight;
+
+
+            if (newDist < distances[edge.destination])
+
+                {
+
+                distances[edge.destination] = newDist;
+
+
+                previous[edge.destination] = current;
+
+
+                pq.push({newDist, edge.destination});
+
+            }
+
+        }
+
+    }
+
+    // Prim's Algorithm for Minimum Spanning Tree
+
+
+            // Reconstruct the path
+
+
+
+    cout << "A* Algorithm results from your selected location :\n";
+
+
+    for (auto& hospital : hospitals)
+
+        {
+
+        int target = hospital.first;
+
+
+        if (distances[target] == INT_MAX)
+            {
+
+            cout << "No path to " << hospital.second.name << "\n";
+
+
+            continue;
+        }
+
+        // Reconstruct the path
+
+
+        int current = target;
+
+
+        vector<int> path;
+
+
+        while (current != -1)
+
+            {
+
+            path.push_back(current);
+
+
+            current = previous[current];
+
+        }
+
+        reverse(path.begin(), path.end());
+
+
+
+        cout << "Path to " << hospital.second.name << ": ";
+
+
+        for (int node : path)
+
+            {
+
+            cout << hospitals[node].name << " -> ";
+        }
+
+        cout << "Total distance: " << distances[target] << " km\n \n";
+
+    }
+
+}
+
+
+// Prim's Algorithm for Minimum Spanning Tree
+
+
+
+void primMST()
+{
+
+    int n = hospitals.size();
+
+
+    vector<bool> inMST(n, false);
+
+    // To check if a node is included in the MST
+
+
+    vector<double> key(n, INT_MAX);
+
+    // Key values to pick minimum weight edge
+
+
+    vector<int> parent(n, -1);
+
+
+    // To store the MST
+
+
+    key[0] = 0;
+
+
+    priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
+
+
+    pq.push({0, 0});
+
+
+
+    while (!pq.empty())
+
+        {
+
+        int u = pq.top().second;
+
+
+        pq.pop();
+
+
+        inMST[u] = true;
+
+
+        for (const Edge& edge : graph[u])
+
+            {
+
+
+            int v = edge.destination;
+
+
+            double weight = edge.weight;
+
+
+            if (!inMST[v] && weight < key[v])
+
+                {
+
+
+                key[v] = weight;
+
+
+                parent[v] = u;
+
+
+                pq.push({key[v], v});
+
+            }
+
+        }
+
+    }
+
+
+    // primMST over in the program
+
+
+    // Prim's Algorithm for Minimum Spanning Tree
+
+
+
+
+    cout << "Prim's MST results:\n";
+
+
+    for (int i = 1; i < n; i++)
+        {
+
+        if (parent[i] != -1)
+            {
+
+            cout << hospitals[parent[i]].name << " -> " << hospitals[i].name << " with distance " << key[i] << " km\n";
+
+
+            cout<<"\n";
+
+        }
+
+    }
+
+}
+
+// main program part over
+
+
+// Adding hospitals and connections
+
+
+void initializeData()
+{
+
+
+
+    // Adding hospitals (real-world examples from New Delhi, India)
+
+
+    hospitals[0] = {"AIIMS", 28.5563, 77.2207};
+
+
+    hospitals[1] = {"Safdarjung Hospital", 28.5854, 77.2241};
+
+
+    hospitals[2] = {"Fortis Escorts", 28.5667, 77.2128};
+
+
+    hospitals[3] = {"Max Super Specialty Hospital", 28.5700, 77.2285};
+
+
+    hospitals[4] = {"Apollo Hospital", 28.5569, 77.2400};
+
+
+    hospitals[5] = {"Sir Ganga Ram Hospital", 28.6257, 77.1833};
+
+
+    hospitals[6] = {"BLK-Max Super Specialty Hospital", 28.6415, 77.1961};
+
+
+    hospitals[7] = {"Primus Super Specialty Hospital", 28.6382, 77.1783};
+
+
+    hospitals[8] = {"Moolchand Medcity", 28.5717, 77.2170};
+
+
+    hospitals[9] = {"Holy Family Hospital", 28.5615, 77.2341};
+
+
+    hospitals[10] = {"Indraprastha Apollo Hospital", 28.5810, 77.2635};
+
+
+    hospitals[11] = {"Artemis Hospital", 28.4989, 77.0825};
+
+
+    hospitals[12] = {"Medanta - The Medicity", 28.4436, 77.0296};
+
+
+    hospitals[13] = {"Kailash Hospital", 28.5355, 77.2370};
+
+
+    hospitals[14] = {"Max Hospital Patparganj", 28.5980, 77.2801};
+
+
+    hospitals[15] = {"Manipal Hospital", 28.5930, 77.2157};
+
+
+    hospitals[16] = {"Rockland Hospital", 28.6139, 77.2245};
+
+
+    hospitals[17] = {"Max Saket", 28.5410, 77.1925};
+
+
+    hospitals[18] = {"Jaypee Hospital", 28.5690, 77.3290};
+
+
+    hospitals[19] = {"Metro Hospital", 28.5814, 77.2672};
+
+
+    hospitals[20] = {"Yashoda Hospital", 28.6112, 77.3107};
+
+
+
+    // Adding edges between hospitals (representing travel paths)
+
+
+
+    graph[0].push_back({1, 4.5});
+
+
+    graph[1].push_back({0, 4.5});
+
+
+    graph[1].push_back({2, 2.0});
+
+
+    graph[2].push_back({1, 2.0});
+
+
+    graph[2].push_back({3, 5.0});
+
+
+    graph[3].push_back({2, 5.0});
+
+
+    graph[3].push_back({4, 1.0});
+
+
+    graph[4].push_back({3, 1.0});
+
+
+    graph[4].push_back({5, 3.5});
+
+
+    graph[5].push_back({4, 3.5});
+
+
+    graph[5].push_back({6, 6.0});
+
+
+    graph[6].push_back({5, 6.0});
+
+
+    graph[6].push_back({7, 2.0});
+
+
+    graph[7].push_back({6, 2.0});
+
+
+    graph[7].push_back({8, 3.0});
+
+
+    graph[8].push_back({7, 3.0});
+
+
+    graph[8].push_back({9, 1.5});
+
+
+    graph[9].push_back({8, 1.5});
+
+
+    graph[9].push_back({10, 4.0});
+
+
+    graph[10].push_back({9, 4.0});
+
+
+    graph[10].push_back({11, 7.0});
+
+
+    graph[11].push_back({10, 7.0});
+
+
+    graph[11].push_back({12, 4.5});
+
+
+    graph[12].push_back({11, 4.5});
+
+
+    graph[12].push_back({13, 3.0});
+
+
+    graph[13].push_back({12, 3.0});
+
+
+    graph[13].push_back({14, 2.0});
+
+
+    graph[14].push_back({13, 2.0});
+
+
+    graph[14].push_back({15, 6.0});
+
+
+    graph[15].push_back({14, 6.0});
+
+
+    graph[15].push_back({16, 3.5});
+
+
+    graph[16].push_back({15, 3.5});
+
+
+    graph[16].push_back({17, 5.5});
+
+
+    graph[17].push_back({16, 5.5});
+
+
+    graph[17].push_back({18, 6.0});
+
+
+    graph[18].push_back({17, 6.0});
+
+
+    graph[18].push_back({19, 2.0});
+
+
+    graph[19].push_back({18, 2.0});
+
+
+    graph[19].push_back({20, 3.5});
+
+
+    graph[20].push_back({19, 3.5});
+
+
+    // adding of the edges completed
+
+
+    vector<int> hospitalIDs = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
+
+
+    // Loop through the IDs and print hospital information in order
+
+
+    for (int id : hospitalIDs)
+        {
+        cout << "Hospital ID: " << id << "\n";
+
+
+        cout << "Name: " << hospitals[id].name << "\n";
+
+
+        cout << "Latitude: " << hospitals[id].latitude << "\n";
+
+
+        cout << "Longitude: " << hospitals[id].longitude << "\n";
+
+
+        cout << "-----------------------\n\n";
+
+
+    }
+
+
+}
+
+//run the program
+
+
+void handleEmergencyResponse()
+ {
+    initializeData();
+
+    int dist;
+
+    // Choose the start hospital (New Delhi Railway Station)
+    int start;
+
+    // Assuming 0 is the starting hospital (AIIMS)
+    cout << "\nEnter the HOSPITAL ID from above as a starting point: \n";
+    cin >> start;
+
+    cout << "Enter the dist to search within the range of: \n";
+    cin >> dist;
+
+    filterHospitals(dist); // Filter hospitals within the specified distance
+
+    dijkstra(start); // Run Dijkstra's algorithm
+    aStar(start);    // Run A* algorithm
+    primMST();       // Run Prim's Minimum Spanning Tree algorithm
+}
+
+
+#include <iostream>
+#include <vector>
+#include <fstream>
+#include <sstream>
+#include <limits.h>
+
+#define MAX_DEPARTMENTS 10
+#define MAX_RESOURCES 10
+
+// Resource names for better readability
+std::vector<std::string> resourceNames = {
+    "Oxygen Cylinders",
+    "Medicines",
+    "Surgical Tools",
+    "Bandages",
+    "Gloves"
+};
+
+// Department names for reference
+const std::string departmentNames[MAX_DEPARTMENTS] = {
+    "Emergency",
+    "ICU",
+    "Surgery",
+    "Pediatrics",
+    "Orthopedics",
+    "Radiology",
+    "Pharmacy",
+    "Anesthesia",
+    "Cardiology",
+    "Neurology"
+};
+
+
+// Function to read resource availability from a file
+void readResourceAvailability(const std::string& filename, int resourceAvailability[], int& numResources)
+{
+    std::ifstream file(filename);
+    if (!file)
+        {
+        std::cerr << "Error: Unable to open resource availability file.\n";
+        return;
+    }
+
+    numResources = 0;
+    while (file >> resourceAvailability[numResources])
+        {
+        numResources++;
+    }
+    file.close();
+}
+
+
+// Function to save updated resource availability to a file
+void saveResourceAvailability(const std::string& filename, const int resourceAvailability[], int numResources)
+
+{
+    std::ofstream file(filename);
+    if (!file) {
+        std::cerr << "Error: Unable to open resource file for saving.\n";
+        return;
+    }
+
+    for (int i = 0; i < numResources; i++) {
+        file << resourceAvailability[i] << "\n";
+    }
+    file.close();
+}
+
+
+// Function to display available resources
+void displayAvailableResources(int resourceAvailability[], int numResources)
+{
+    std::cout << "Available Resources:\n";
+    for (int i = 0; i < numResources; i++)
+        {
+
+        std::cout << resourceNames[i] << ": " << resourceAvailability[i] << " units\n";
+    }
+}
+
+// Function to read resource demand from a file
+void readResourceDemand(const std::string& filename, int resourceDemand[], int& numResources)
+{
+    std::ifstream file(filename);
+    if (!file)
+
+        {
+        std::cerr << "Error: Unable to open resource demand file.\n";
+        return;
+    }
+
+    numResources = 0;
+    while (file >> resourceDemand[numResources])
+        {
+
+        numResources++;
+    }
+    file.close();
+}
+
+
+// Function to save resource demand to a file
+void saveResourceDemand(const std::string& filename, const int resourceDemand[], int numResources)
+
+{
+    std::ofstream file(filename);
+    if (!file)
+        {
+        std::cerr << "Error: Unable to open resource demand file for saving.\n";
+        return;
+    }
+
+    for (int i = 0; i < numResources; i++)
+        {
+
+        file << resourceDemand[i] << "\n";
+    }
+    file.close();
+}
+
+// Function to update resource demand
+void updateResourceDemand(int resourceDemand[], int numResources)
+{
+    std::cout << "Update Resource Demand:\n";
+    for (int i = 0; i < numResources; i++) {
+        std::cout << resourceNames[i] << ": ";
+        std::cin >> resourceDemand[i];
+    }
+}
+
+// Function to allocate resources based on demand and availability
+void allocateResources(int resourceAvailability[], int resourceDemand[], int numResources)
+{
+    for (int i = 0; i < numResources; i++)
+
+        {
+        if (resourceDemand[i] <= resourceAvailability[i])
+        {
+            // Allocate the resource
+            resourceAvailability[i] -= resourceDemand[i];
+            std::cout << "Allocated " << resourceDemand[i] << " units of " << resourceNames[i] << "\n";
+        } else
+        {
+            std::cout << "Not enough " << resourceNames[i] << " available. Required: "
+                      << resourceDemand[i] << ", Available: " << resourceAvailability[i] << "\n";
+            std::cout << "Consider getting it from another department.\n";
+        }
+    }
+}
+
+
+// Function to transfer resources between departments
+void transferResources(int resourceAvailability[], int numResources)
+{
+    int fromDepartment, toDepartment, resourceIndex, transferQuantity;
+
+    std::cout << "Enter the department number to transfer resources from (0-9):\n";
+    for (int i = 0; i < MAX_DEPARTMENTS; i++) {
+        std::cout << i << ". " << departmentNames[i] << "\n";
+    }
+    std::cin >> fromDepartment;
+
+    if (fromDepartment < 0 || fromDepartment >= MAX_DEPARTMENTS)
+        {
+
+        std::cerr << "Invalid department number.\n";
+        return;
+    }
+
+    std::cout << "Enter the department number to transfer resources to (0-9):\n";
+    std::cin >> toDepartment;
+
+    if (toDepartment < 0 || toDepartment >= MAX_DEPARTMENTS)
+
+        {
+
+        std::cerr << "Invalid department number.\n";
+        return;
+    }
+
+    std::cout << "Enter the resource number to transfer (0-" << numResources - 1 << "):\n";
+    for (int i = 0; i < numResources; i++)
+        {
+
+        std::cout << i << ". " << resourceNames[i] << "\n";
+    }
+    std::cin >> resourceIndex;
+
+    if (resourceIndex < 0 || resourceIndex >= numResources)
+        {
+
+        std::cerr << "Invalid resource number.\n";
+        return;
+    }
+
+    std::cout << "Enter the quantity to transfer:\n";
+    std::cin >> transferQuantity;
+
+    if (transferQuantity <= 0 || transferQuantity > resourceAvailability[resourceIndex])
+        {
+
+        std::cerr << "Invalid transfer quantity.\n";
+        return;
+    }
+
+    // Perform the transfer
+    resourceAvailability[resourceIndex] -= transferQuantity;
+    std::cout << "Transferred " << transferQuantity << " units of " << resourceNames[resourceIndex]
+              << " from " << departmentNames[fromDepartment] << " to " << departmentNames[toDepartment] << ".\n";
+
+    // Save the updated resource availability to a file
+    saveResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+}
+
+
+// Function to handle resource allocation for a selected department
+void handleResourceAllocation()
+
+{
+    int resourceAvailability[MAX_RESOURCES];
+    // Demand by the selected department
+    int resourceDemand[MAX_RESOURCES] = {0};
+    int numResources = 0;
+
+    // Read available resources from file
+    readResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+
+    // Display available resources
+    displayAvailableResources(resourceAvailability, numResources);
+
+    // Ask user which department they want to allocate resources to
+    int departmentIndex;
+    std::cout << "Enter the department number (0-9) to allocate resources to:\n";
+    for (int i = 0; i < MAX_DEPARTMENTS; i++)
+        {
+
+        std::cout << i << ". " << departmentNames[i] << "\n";
+    }
+    std::cin >> departmentIndex;
+
+    if (departmentIndex < 0 || departmentIndex >= MAX_DEPARTMENTS)
+        {
+
+        std::cerr << "Invalid department number.\n";
+        return;
+    }
+
+    std::cout << "Allocating resources to " << departmentNames[departmentIndex] << "...\n";
+
+    // Ask the user to input the resource demands for the selected department
+    std::cout << "Enter the required quantities for the following resources:\n";
+    for (int i = 0; i < numResources; i++) {
+        std::cout << resourceNames[i] << ": ";
+        std::cin >> resourceDemand[i];
+    }
+
+    // Allocate resources to the selected department
+    allocateResources(resourceAvailability, resourceDemand, numResources);
+
+    // Save the updated resource availability to a file
+    saveResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+}
+
+// Function to generate a report of the current resource status
+void generateResourceReport()
+{
+    int resourceAvailability[MAX_RESOURCES];
+    int resourceDemand[MAX_RESOURCES];
+    int numResources = 0;
+
+    // Read available resources from file
+    readResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+
+    // Read resource demand from file
+    readResourceDemand("resource_demand.txt", resourceDemand, numResources);
+
+    // Generate the report
+    std::cout << "\nResource Report:\n";
+    std::cout << "---------------------------------\n";
+    for (int i = 0; i < numResources; i++) {
+        std::cout << resourceNames[i] << ":\n";
+        std::cout << "  Available: " << resourceAvailability[i] << " units\n";
+        std::cout << "  Demand: " << resourceDemand[i] << " units\n";
+        std::cout << "---------------------------------\n";
+
+    }
+
+}
+
+
+// Function to add a new resource
+void addNewResource()
+
+{
+    int resourceAvailability[MAX_RESOURCES];
+    int numResources = 0;
+
+    // Read available resources from file
+    readResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+
+    if (numResources >= MAX_RESOURCES) {
+        std::cerr << "Error: Maximum number of resources reached.\n";
+
+        return;
+    }
+
+    std::string newResourceName;
+    int newResourceQuantity;
+
+    std::cout << "Enter the name of the new resource: ";
+    std::cin.ignore(); // To ignore any leftover newline character in the input buffer
+    std::getline(std::cin, newResourceName);
+
+    std::cout << "Enter the quantity of the new resource: ";
+    std::cin >> newResourceQuantity;
+
+    if (newResourceQuantity < 0) {
+        std::cerr << "Error: Quantity cannot be negative.\n";
+
+        return;
+    }
+
+    // Add the new resource
+    resourceNames.push_back(newResourceName);
+    resourceAvailability[numResources] = newResourceQuantity;
+    numResources++;
+
+    // Save the updated resource availability to a file
+    saveResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+
+    std::cout << "New resource added successfully.\n";
+}
+
+
+// Function to display the main menu and handle user choices
+void displayMainMenu()
+{
+    int choice;
+    do {
+        std::cout << "\nResource Management System\n";
+        std::cout << "1. Display Available Resources\n";
+        std::cout << "2. Update Resource Demand\n";
+        std::cout << "3. Allocate Resources\n";
+        std::cout << "4. Transfer Resources\n";
+        std::cout << "5. Generate Resource Report\n";
+        std::cout << "6. Add New Resource\n";
+        std::cout << "7. Exit\n";
+        std::cout << "Enter your choice: ";
+        std::cin >> choice;
+
+        switch (choice)
+        {
+            case 1:
+                 {
+                int resourceAvailability[MAX_RESOURCES];
+                int numResources = 0;
+                readResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+                displayAvailableResources(resourceAvailability, numResources);
+                break;
+            }
+            case 2:
+                 {
+                int resourceDemand[MAX_RESOURCES];
+                int numResources = 0;
+                readResourceDemand("resource_demand.txt", resourceDemand, numResources);
+                updateResourceDemand(resourceDemand, numResources);
+                saveResourceDemand("resource_demand.txt", resourceDemand, numResources);
+                break;
+            }
+            case 3:
+                handleResourceAllocation();
+                break;
+            case 4:
+                {
+                int resourceAvailability[MAX_RESOURCES];
+                int numResources = 0;
+                readResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+                transferResources(resourceAvailability, numResources);
+                break;
+            }
+            case 5:
+                generateResourceReport();
+                break;
+            case 6:
+                addNewResource();
+                break;
+            case 7:
+                std::cout << "Exiting the program.\n";
+                break;
+            default:
+                std::cerr << "Invalid choice. Please try again.\n";
+        }
+    }
+    while (choice != 7);
+}
+
+
+#include <iostream>
+#include <fstream>
+
+#include <string>
+#include <conio.h>
+
+// Include other module files
+
+
+// Forward declarations of functions
+
+bool login();
+
+
+void generateReports();
+
+void collectFeedback();
+
+// Function to display About Us
+void aboutUs();
+
+// Function to display Amenities and Facilities
+void amenitiesAndFacilities();
+
+// Function to display Contact Us
+void contactUs();
+
+void generateDoctorScheduleReport();
+
+void generateResourceUsageReport();
+
+int main()
+
+{
+
+    // Allowing up to 3 login attempts
+    int attempts = 0;
+    bool success = false;
+    while (attempts < 3 && !success)
+
+    {
+        success = login();
+
+        if (!success)
+
+        {
+            attempts++;
+
+            if (attempts < 3)
+
+            {
+
+                std::cout << "You have " << (3 - attempts) << " attempts left.\n";
+
+            }
+        }
+    }
+
+    if (success)
+
+    {
+        int choice;
+        do
+
+        {
+            std::cout << "\n----- Welcome to DaaCure Hospital Management System -----\n";
+            std::cout << "1. Patient Admission and Doctor Scheduling\n";
+            std::cout << "2. Emergency Response\n";
+            std::cout << "3. Resource Allocation\n";
+            std::cout << "4. Reports and Analytics\n";
+            std::cout << "5. Feedback and Complaints\n";
+
+            // Added About Us option
+            std::cout << "6. About Us\n";
+
+            // Added Amenities option
+            std::cout << "7. Amenities and Facilities\n";
+
+            // Added Contact Us option
+            std::cout << "8. Contact Us\n";
+            std::cout << "9. Exit\n";
+            std::cout << "Enter your choice: ";
+            std::cin >> choice;
+
+            switch (choice)
+
+            {
+
+                case 1:
+                    // Call Patient Admission module
+                    handlePatientAdmission();
+                    break;
+
+
+                case 2:
+                    loadDoctors();
+                    // Call Emergency Response module
+                    handleEmergencyResponse();
+                    break;
+
+
+               case 3:
+                   // Call Resource Allocation module
+  handleResourceAllocation(); // Call Resource Allocation module
+    break;
+
+
+
+                case 4:
+                    // Generate Reports
+                    generateReports();
+                    break;
+
+
+                case 5:
+                    // Collect Feedback and Complaints
+                    collectFeedback();
+                    break;
+
+
+                case 6:
+                    // Display About Us
+                    aboutUs();
+                    break;
+
+
+                case 7:
+                    // Display Amenities and Facilities
+                    amenitiesAndFacilities();
+                    break;
+
+
+                case 8:
+                    // Display Contact Us
+                    contactUs();
+                    break;
+
+
+                case 9:
+                    std::cout << "Exiting DaaCure Hospital Management System. Goodbye!\n";
+                    break;
+
+
+                default:
+                    std::cout << "Invalid choice. Please try again.\n";
+                    break;
+            }
+        }
+
+        while (choice != 9);
+
+    }
+
+    else
+    {
+
+        std::cout << "Too many incorrect login attempts. Exiting...\n";
+
+    }
+
+
+    return 0;
+
+
+}
+
+
+void forgotPassword()
+
+{
+
+    std::string username, file_username, file_password, passwordHint;
+
+    std::cout << "Enter your username: ";
+    std::cin >> username;
+
+    // Open the file to search for the user
+    std::ifstream loginFile("login.txt");
+    if (!loginFile)
+
+    {
+
+        std::cerr << "Error: Unable to open login file.\n";
+        return;
+
+    }
+
+    bool userFound = false;
+    while (loginFile >> file_username >> file_password)
+
+    {
+        // Read the hint (rest of the line)
+        std::getline(loginFile, passwordHint);
+        if (username == file_username)
+
+        {
+            userFound = true;
+            break;
+        }
+    }
+
+    loginFile.close();
+
+    if (userFound)
+
+    {
+        std::cout << "User found. Password Hint: " << passwordHint << "\n";
+    }
+
+    else
+
+    {
+
+        std::cout << "Username not found. Please register or check your credentials.\n";
+
+    }
+}
+
+
+
+bool login()
+
+{
+
+    std::string username, password, file_username, file_password;
+    char ch;
+
+    std::cout << "----- Welcome to DaaCure Hospital Management System -----\n";
+    std::cout << "LOGIN:\n";
+    std::cout << "Username: ";
+    std::cin >> username;
+
+
+    std::cout << "Password: ";
+    password = "";
+    while (true)
+
+    {
+
+        ch = _getch();
+
+        // Enter key
+        if (ch == 13) break;
+
+        else if (ch == 8 && !password.empty())
+
+        {
+             // Backspace key
+            password.pop_back();
+
+            std::cout << "\b \b";
+        }
+        else
+
+        {
+            password += ch;
+            std::cout << "*";
+        }
+    }
+
+    std::cout << "\n";
+
+    // Open the login file to check credentials
+    std::ifstream loginFile("login.txt");
+    if (!loginFile)
+
+    {
+
+        std::cerr << "Error: Unable to open login file.\n";
+
+        return false;
+
+    }
+
+    bool usernameFound = false;
+    bool authenticated = false;
+    while (loginFile >> file_username >> file_password)
+
+    {
+
+        if (username == file_username)
+
+        {
+
+            usernameFound = true;
+
+            if (password == file_password)
+
+            {
+                authenticated = true;
+            }
+
+            break;
+
+        }
+    }
+
+    loginFile.close();
+
+    if (authenticated)
+
+    {
+
+        std::cout << "Login successful. Welcome, " << username << "!\n";
+
+        return true;
+    }
+
+    else if (usernameFound)
+
+    {
+
+        std::cout << "Incorrect password. Please try again.\n";
+
+    }
+
+    else
+    {
+        std::cout << "Username not found. Please try again.\n";
+    }
+
+
+    // Offer forgot password option
+    std::cout << "Forgot Password? (y/n): ";
+    char choice;
+    std::cin >> choice;
+    if (choice == 'y' || choice == 'Y')
+
+    {
+
+        forgotPassword();
+
+    }
+
+    return false;
+
+}
+
+
+void generateResourceUsageReport()
+ {
+    int resourceAvailability[MAX_RESOURCES];
+    int numResources = 0;
+
+
+    // Read available resources from file
+    readResourceAvailability("resource_availability.txt", resourceAvailability, numResources);
+
+    std::ofstream reportFile("resource_usage_report.txt");
+    if (!reportFile)
+        {
+
+        std::cerr << "Error: Unable to open report file for writing.\n";
+        return;
+
+    }
+
+    reportFile << "--- Resources Report ---\n";
+    for (int i = 0; i < numResources; i++)
+        {
+
+        reportFile << resourceNames[i] << ": " << resourceAvailability[i] << " units available\n";
+
+    }
+
+    reportFile.close();
+
+}
+
+void displayReport(const std::string& filename)
+
+ {
+    std::ifstream reportFile(filename);
+    if (!reportFile)
+        {
+
+        std::cerr << "Error: Unable to open report file: " << filename << "\n";
+
+        return;
+
+    }
+
+    std::string line;
+    while (std::getline(reportFile, line))
+        {
+
+        std::cout << line << "\n";
+
+    }
+
+    reportFile.close();
+}
+
+// Generate Reports and Analytics
+
+void generateReports()
+ {
+
+    std::cout << "\n--- Reports and Analytics ---\n";
+
+    // Generate Patient Statistics
+
+    std::ifstream patientFile("patients.txt");
+
+    if (!patientFile)
+        {
+
+        std::cerr << "Error: Unable to open patient file for reports.\n";
+        return;
+
+    }
+
+    int totalPatients = 0;
+    std::string name, condition, roomType;
+    int priority;
+
+std::cout << "\n--- Patient Statistics: ---\n";
+    while (patientFile >> name >> condition >> priority >> roomType) {
+        totalPatients++;
+        std::cout << "Name: " << name << ", Condition: " << condition
+                  << ", Priority: " << priority << ", Room Type: " << roomType << "\n";
+    }
+
+    std::cout << "Total Patients: " << totalPatients << "\n";
+
+
+
+    // Generate Resource Usage Report
+    generateResourceUsageReport();
+    displayReport("resource_usage_report.txt"); // Display the resource usage report
+
+}
+
+
+
+// Collect Feedback and Complaints
+
+void collectFeedback()
+
+{
+
+    std::cout << "\n--- Feedback and Complaints ---\n";
+
+    // Clear input buffer
+    std::cin.ignore();
+
+    std::string feedback;
+    std::cout << "Enter your feedback or complaint: ";
+    std::getline(std::cin, feedback);
+
+    std::ofstream feedbackFile("feedback.txt", std::ios::app);
+    if (!feedbackFile)
+
+    {
+        std::cerr << "Error: Unable to open feedback file.\n";
+        return;
+    }
+
+    feedbackFile << feedback << "\n";
+    feedbackFile.close();
+
+    std::cout << "Thank you for your feedback. It has been recorded.\n";
+
+}
+
+
+// About Us function
+void aboutUs()
+
+{
+
+    std::cout << "\n--- About Us ---\n";
+
+    std::cout << "DaaCure Hospital is dedicated to providing high-quality healthcare services.\n";
+
+    std::cout << "Our team of experienced professionals is committed to ensuring the well-being of our patients.\n";
+
+    std::cout << "\n--- Specialties ---\n";
+
+    std::cout << "General Specialties:\n";
+
+    std::cout << "- Accident-Emergency\n";
+
+    std::cout << "- Anaesthesiology\n";
+
+    std::cout << "- Dentistry\n";
+
+    std::cout << "- Emergency Medicine\n";
+
+    std::cout << "- ENT\n";
+
+    std::cout << "- General Medicine\n";
+
+    std::cout << "\nSuper Speciality Services:\n";
+
+    std::cout << "- Cardiology\n";
+
+    std::cout << "- Cardio Vascular Thoracic Surgery\n";
+
+    std::cout << "- Gastroenterology\n";
+
+    std::cout << "- Interventional Radiology\n";
+
+    std::cout << "- Medical Oncology\n";
+
+    std::cout << "- Nephrology\n";
+
+    std::cout << "- Neurosurgery\n";
+
+    std::cout << "- Neurology\n";
+}
+
+
+
+// Amenities and Facilities function
+void amenitiesAndFacilities()
+
+{
+
+    std::cout << "\n--- Amenities and Facilities ---\n";
+
+    std::cout << "1. Ambulance Service (Call: 0831-255)\n";
+
+    std::cout << "2. Blood Bank (Call: 0831-2551)\n";
+
+    std::cout << "3. Accident Emergency (TC & EMS)\n";
+}
+
+
+// Contact Us function
+void contactUs()
+
+{
+
+    std::cout << "\n--- Contact Us ---\n";
+    std::cout << "For inquiries, please reach out to us at:\n";
+
+    std::cout << "Phone: 0831-255\n";
+
+    std::cout << "Email: contact@daacurehospital.com\n";
+
+    std::cout << "Address: DaaCure Hospital, 123 Health St, Belgaum, India\n";
+}
